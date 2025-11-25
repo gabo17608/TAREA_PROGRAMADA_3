@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav>
+        <a href="buscarFinca.html">Buscar Finca</a> |
+        <a href="buscarPersona.html">Buscar Persona</a> |
+        <a href="index.html" id="logout">Logout</a>
+    </nav>
+    <h2>Bienvenido al Dashboard</h2>
+
+    <script>
+        document.getElementById("logout").addEventListener("click", () => {
+            localStorage.removeItem("token");
+        });
+    </script>
+</body>
+</html>

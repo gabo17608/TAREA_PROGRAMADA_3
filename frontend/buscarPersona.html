@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscar Persona</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        #spinnerPersona { display: none; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h2>Buscar Persona</h2>
+    <form id="buscarPersonaForm">
+        <input type="text" id="documento" placeholder="Número de Documento" required>
+        <button type="submit">Buscar</button>
+    </form>
+    <div id="spinnerPersona">Cargando...</div>
+    <div id="resultadosPersona"></div>
+
+    <script type="module" src="js/buscarPersona.js"></script>
+</body>
+</html>
