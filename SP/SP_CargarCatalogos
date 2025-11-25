@@ -1,0 +1,254 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogos]    Script Date: 25/11/2025 3:43:12 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_CargarCatalogos]
+    @inXmlCatalogos XML                         -- Datos en formato XML
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+
+        BEGIN TRANSACTION;
+
+            INSERT INTO dbo.ParametrosSistema (     -- INSERT ParametrosSistema 1)
+                ParametroId
+                , Nombre
+                , Valor
+            )
+            SELECT 
+                1
+                , 'DiasVencimientoFactura'
+                , P.value('(DiasVencimientoFactura)[1]', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/ParametrosSistema') AS T(P);
+
+
+            INSERT INTO dbo.ParametrosSistema (     -- INSERT ParametrosSistema 2)
+                ParametroId
+                , Nombre
+                , Valor
+            )
+            SELECT 
+                2
+                , 'DiasGraciaCorta'
+                , P.value('(DiasGraciaCorta)[1]', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/ParametrosSistema') AS T(P);
+        
+
+            INSERT INTO dbo.TipoMovimientoMedidor (     -- INSERT TipoMovimientoMedidor
+                TipoMovId
+                , Nombre
+            )
+            SELECT 
+                TM.value('@id', 'INT')
+                , TM.value('@nombre', 'NVARCHAR(50)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/TipoMovimientoLecturaMedidor/TipoMov') AS T(TM);
+        
+
+            INSERT INTO dbo.TipoUsoPropiedad (          -- INSERT TipoUsoPropiedad
+                TipoUsoId
+                , Nombre
+            )
+            SELECT 
+                TU.value('@id', 'INT')
+                , TU.value('@nombre', 'NVARCHAR(100)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/TipoUsoPropiedad/TipoUso') AS T(TU);
+
+
+            INSERT INTO dbo.TipoZonaPropiedad (         -- INSERT TipoZonaPropiedad
+                TipoZonaId
+                , Nombre
+            )
+            SELECT 
+                TZ.value('@id', 'INT')
+                , TZ.value('@nombre', 'NVARCHAR(100)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/TipoZonaPropiedad/TipoZona') AS T(TZ);
+
+     
+            INSERT INTO dbo.UsuarioAdmin (              -- INSERT UsuarioAdmin
+                UsuarioId
+                , Username
+                , Contrasena
+            )
+            SELECT 
+                UA.value('@id', 'INT')
+                , UA.value('@nombre', 'NVARCHAR(50)')
+                , UA.value('@password', 'NVARCHAR(100)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/UsuarioAdmin/Admin') AS T(UA);
+
+
+            INSERT INTO dbo.TipoMedioPago (             -- INSERT TipoMedioPago
+                TipoMedioPagoId
+                , Nombre
+            )
+            SELECT 
+                TMP.value('@id', 'INT')
+                , TMP.value('@nombre', 'NVARCHAR(255)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/TipoMedioPago/MedioPago') AS T(TMP);
+
+
+            INSERT INTO dbo.PeriodoMontoCC (            -- INSERT PeriodoMontoCC
+                PeriodoMontoId
+                , Nombre
+                , QMeses
+                , Dias
+            )
+            SELECT 
+                PM.value('@id', 'INT')
+                , PM.value('@nombre', 'NVARCHAR(255)')
+                , PM.value('@qMeses', 'INT')
+                , NULLIF(PM.value('@dias', 'INT'), '')
+            FROM @inXmlCatalogos.nodes('/Catalogos/PeriodoMontoCC/PeriodoMonto') AS T(PM);
+
+
+            INSERT INTO dbo.TipoMontoCC (               -- INSERT TipoMontoCC
+                TipoMontoId
+                , Nombre
+            )
+            SELECT 
+                TMC.value('@id', 'INT')
+                , TMC.value('@nombre', 'NVARCHAR(255)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/TipoMontoCC/TipoMonto') AS T(TMC);
+
+        
+        
+            INSERT INTO dbo.ConceptoCobro (             -- INSERT ConceptoCobro (base de las tablas CC)
+                ConceptoCobroId
+                , Nombre
+                , TipoMontoId
+                , PeriodoMontoId
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@nombre', 'NVARCHAR(100)')
+                , CC.value('@TipoMontoCC', 'INT')
+                , CC.value('@PeriodoMontoCC', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC);
+
+
+                                                        -- Tablas hijas
+            INSERT INTO dbo.CC_Agua (                   -- INSERT CC_Agua
+                ConceptoCobroId
+                , ValorMinimo
+                , ValorMinimoM3
+                , ValorFijoM3Adicional
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorMinimo', 'INT')
+                , CC.value('@ValorMinimoM3', 'INT')
+                , CC.value('@ValorFijoM3Adicional', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 1;
+
+
+            INSERT INTO dbo.CC_PatenteComercial (       -- INSERT CC_PatenteComercial
+                ConceptoCobroId
+                , ValorFijo
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorFijo', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 2;
+
+
+            INSERT INTO dbo.CC_ImpuestoPropiedad (      -- INSERT CC_ImpuestoPropiedad
+                ConceptoCobroId
+                , ValorPorcentual
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorPorcentual', 'DECIMAL(5,4)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 3;
+
+
+            INSERT INTO dbo.CC_RecoleccionBasura (      -- INSERT CC_RecoleccionBasura
+                ConceptoCobroId
+                , ValorMinimo
+                , ValorFijo
+                , ValorM2Minimo
+                , ValorTramosM2
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorMinimo', 'INT')
+                , CC.value('@ValorFijo', 'INT')
+                , CC.value('@ValorM2Minimo', 'INT')
+                , CC.value('@ValorTramosM2', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 4;
+
+
+            INSERT INTO dbo.CC_MantenimientoParques (       -- INSERT CC_MantenimientoParques
+                ConceptoCobroId
+                , ValorFijo
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorFijo', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 5;
+
+
+            INSERT INTO dbo.CC_ReconexionAgua (             -- INSERT CC_ReconexionAgua
+                ConceptoCobroId
+                , ValorFijo
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorFijo', 'INT')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 6;
+
+
+            INSERT INTO dbo.CC_InteresesMoratorios (        -- INSERT CC_InteresesMoratorios
+                ConceptoCobroId
+                , ValorPorcentual
+            )
+            SELECT 
+                CC.value('@id', 'INT')
+                , CC.value('@ValorPorcentual', 'DECIMAL(5,4)')
+            FROM @inXmlCatalogos.nodes('/Catalogos/CCs/CC') AS T(CC)
+            WHERE CC.value('@id', 'INT') = 7;
+
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_CargarCatalogos'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_CargarCatalogos'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

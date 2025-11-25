@@ -1,0 +1,316 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_GenerarFacturas]    Script Date: 25/11/2025 3:43:34 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_GenerarFacturas]
+    @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @PropiedadesAFacturar TABLE (
+        PropiedadId INT PRIMARY KEY
+        , NumeroFinca VARCHAR(20)
+        , SaldoM3 DECIMAL(10,2)
+        , SaldoM3UltimaFactura DECIMAL(10,2)
+        , ValorFiscal DECIMAL(15,2)
+        , TipoUsoId INT
+        , TipoZonaId INT
+        , MetrosCuadrados DECIMAL(10,2)
+    );
+
+    DECLARE @FacturasDetalle TABLE (
+        FacturaId INT
+        , PropiedadId INT
+        , ConceptoCobroId INT
+        , Monto DECIMAL(15,2)
+        , Descripcion NVARCHAR(255)
+        , ConsumoM3 DECIMAL(10,2)
+    );
+
+    DECLARE @DiasVencimiento INT;
+    
+    BEGIN TRY
+
+        SELECT @DiasVencimiento = Valor
+        FROM dbo.ParametrosSistema
+        WHERE Nombre = 'DiasVencimientoFactura';
+
+        
+        INSERT INTO @PropiedadesAFacturar (                                             -- Buscar propiedades a facturar
+            PropiedadId
+            , NumeroFinca
+            , SaldoM3
+            , SaldoM3UltimaFactura
+            , ValorFiscal
+            , TipoUsoId
+            , TipoZonaId
+            , MetrosCuadrados
+        )
+        SELECT 
+            P.PropiedadId
+            , P.NumeroFinca
+            , P.SaldoM3
+            , P.SaldoM3UltimaFactura
+            , P.ValorFiscal
+            , P.TipoUsoId
+            , P.TipoZonaId
+            , P.MetrosCuadrados
+        FROM dbo.Propiedad P
+        WHERE 
+        (
+            DAY(P.FechaRegistro) = DAY(@inFechaOperacion)                               -- En caso de que sea el mismo día del mes
+            OR
+            (
+                DAY(P.FechaRegistro) = 31                                               -- Si fue registrado el día 31
+                 AND DAY(@inFechaOperacion) = 
+                     CASE WHEN MONTH(@inFechaOperacion) = 2                             -- Caso Febrero
+                         THEN 
+                            CASE WHEN YEAR(@inFechaOperacion) % 4 = 0                   -- Si es año bisiesto se hace la factura el 29
+                                THEN 29
+                                ELSE 28                                                 -- Sino el 28
+                            END
+                         WHEN MONTH(@inFechaOperacion) IN (4, 6, 9, 11)                 -- Caso Meses de 30 días 
+                         THEN 30
+                         ELSE 31                                                        -- Caso Meses de 31 días 
+                 END
+            )
+        )
+        AND NOT EXISTS (                                                             -- Evitar facturar 2 veces en el mismo mes
+                SELECT 1 
+                FROM dbo.Factura F 
+                WHERE F.PropiedadId = P.PropiedadId 
+                    AND YEAR(F.FechaFactura) = YEAR(@inFechaOperacion)
+                    AND MONTH(F.FechaFactura) = MONTH(@inFechaOperacion)
+        );
+
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM @PropiedadesAFacturar
+        )
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+        BEGIN TRANSACTION;
+
+        
+        INSERT INTO dbo.Factura (                                                           -- Insertar facturas con totales en 0 
+            PropiedadId                             
+            , FechaFactura
+            , FechaVencimiento 
+            , TotalAPagarOriginal
+            , TotalAPagarFinal                                                              -- Se calculan después
+            , EstadoFacturaId
+        )
+        SELECT 
+            PAF.PropiedadId
+            , @inFechaOperacion
+            , DATEADD(DAY, @DiasVencimiento, @inFechaOperacion)
+            , 0
+            , 0
+            , 1
+        FROM @PropiedadesAFacturar PAF;
+
+        
+        INSERT INTO @FacturasDetalle (                                                      -- Calcular detalles para cada CC
+            FacturaId
+            , PropiedadId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
+            , ConsumoM3
+        )   
+        
+        
+        SELECT                                                                              -- CC Agua id=1
+            F.FacturaId
+            , PAF.PropiedadId
+            , 1
+            , CASE WHEN (PAF.SaldoM3 - PAF.SaldoM3UltimaFactura) <= CA.ValorMinimoM3 
+                THEN CA.ValorMinimo
+                ELSE CA.ValorMinimo + 
+                     ((PAF.SaldoM3 - PAF.SaldoM3UltimaFactura) - CA.ValorMinimoM3) * CA.ValorFijoM3Adicional
+            END
+            , 'Consumo de Agua'
+            , PAF.SaldoM3 - PAF.SaldoM3UltimaFactura
+        FROM @PropiedadesAFacturar PAF
+        INNER JOIN dbo.Factura F ON F.PropiedadId = PAF.PropiedadId 
+            AND F.FechaFactura = @inFechaOperacion
+        INNER JOIN dbo.CC_Agua CA ON CA.ConceptoCobroId = 1
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = PAF.PropiedadId 
+                AND CP.ConceptoCobroId = 1 
+                AND CP.TipoAsociacionId = 1
+        )
+
+        UNION ALL
+
+        
+        SELECT                                                                              -- CC Impuesto Propiedad id=3
+            F.FacturaId
+            , PAF.PropiedadId
+            , 3
+            , PAF.ValorFiscal * CIP.ValorPorcentual / 12
+            , 'Impuesto sobre Propiedad'
+            , NULL
+        FROM @PropiedadesAFacturar PAF
+        INNER JOIN dbo.Factura F ON F.PropiedadId = PAF.PropiedadId 
+            AND F.FechaFactura = @inFechaOperacion
+        INNER JOIN dbo.CC_ImpuestoPropiedad CIP ON CIP.ConceptoCobroId = 3
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = PAF.PropiedadId 
+                AND CP.ConceptoCobroId = 3 
+                AND CP.TipoAsociacionId = 1
+        )
+
+        UNION ALL
+
+        
+        SELECT                                                                              -- CC Recolección Basura id=4
+            F.FacturaId
+            , PAF.PropiedadId
+            , 4
+            , CASE WHEN PAF.MetrosCuadrados <= CRB.ValorM2Minimo 
+                THEN CRB.ValorMinimo
+                ELSE CRB.ValorMinimo + 
+                     CEILING((PAF.MetrosCuadrados - CRB.ValorM2Minimo) / CRB.ValorTramosM2) * CRB.ValorFijo
+            END
+            , 'Recolección de Basura'
+            , NULL
+        FROM @PropiedadesAFacturar PAF
+        INNER JOIN dbo.Factura F ON F.PropiedadId = PAF.PropiedadId 
+            AND F.FechaFactura = @inFechaOperacion
+        INNER JOIN dbo.CC_RecoleccionBasura CRB ON CRB.ConceptoCobroId = 4
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = PAF.PropiedadId 
+                AND CP.ConceptoCobroId = 4 
+                AND CP.TipoAsociacionId = 1
+        )
+
+        UNION ALL
+
+        
+        SELECT                                                                                  -- CC Mantenimiento Parques id=5
+            F.FacturaId, PAF.PropiedadId
+            , 5
+            , CMP.ValorFijo / 12
+            ,'Mantenimiento de Parques'
+            , NULL
+        FROM @PropiedadesAFacturar PAF
+        INNER JOIN dbo.Factura F ON F.PropiedadId = PAF.PropiedadId 
+            AND F.FechaFactura = @inFechaOperacion
+        INNER JOIN dbo.CC_MantenimientoParques CMP ON CMP.ConceptoCobroId = 5
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = PAF.PropiedadId 
+                AND CP.ConceptoCobroId = 5 
+                AND CP.TipoAsociacionId = 1
+        )
+
+        UNION ALL
+
+        
+        SELECT                                                                                  -- CC Patente Comercial id=2
+            F.FacturaId
+            , PAF.PropiedadId
+            , 2
+            , CPC.ValorFijo / 6
+            , 'Patente Comercial'
+            , NULL
+        FROM @PropiedadesAFacturar PAF
+        INNER JOIN dbo.Factura F ON F.PropiedadId = PAF.PropiedadId 
+            AND F.FechaFactura = @inFechaOperacion
+        INNER JOIN dbo.CC_PatenteComercial CPC ON CPC.ConceptoCobroId = 2
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = PAF.PropiedadId 
+                AND CP.ConceptoCobroId = 2 
+                AND CP.TipoAsociacionId = 1
+        );
+
+
+        INSERT INTO dbo.DetalleFactura (                                                        -- Se insertan todos los cálculos
+            FacturaId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
+            , ConsumoM3
+        )
+        SELECT FacturaId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
+            , ConsumoM3
+        FROM @FacturasDetalle;
+
+
+        UPDATE F                                                                                -- Se suman todos los detalles para obtener
+        SET F.TotalAPagarOriginal = FD.TotalOriginal                                            -- el total de cada factura
+            , F.TotalAPagarFinal = FD.TotalFinal
+        FROM dbo.Factura F
+        INNER JOIN (
+            SELECT FacturaId
+                , SUM(Monto) AS TotalOriginal
+                , SUM(Monto) AS TotalFinal
+            FROM @FacturasDetalle
+            GROUP BY FacturaId
+        ) FD ON F.FacturaId = FD.FacturaId;
+
+        
+        UPDATE P                                                                                -- Actualizar SaldoM3UltimaFactura
+        SET P.SaldoM3UltimaFactura = P.SaldoM3
+        FROM dbo.Propiedad P
+        INNER JOIN @PropiedadesAFacturar PAF ON P.PropiedadId = PAF.PropiedadId
+        WHERE EXISTS (
+            SELECT 1 
+            FROM dbo.CCPropiedad CP 
+            WHERE CP.PropiedadId = P.PropiedadId 
+                AND CP.ConceptoCobroId = 1
+                AND CP.TipoAsociacionId = 1
+        );
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SET @outResultCode = 50008;
+        INSERT INTO dbo.DBError 
+        (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES 
+        (
+            'SP_GenerarFacturas'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_GenerarFacturas'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

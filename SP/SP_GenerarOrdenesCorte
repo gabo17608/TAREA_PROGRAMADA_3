@@ -1,0 +1,148 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_GenerarOrdenesCorte]    Script Date: 25/11/2025 3:43:54 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_GenerarOrdenesCorte]
+    @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @PropiedadesACortar TABLE (
+        PropiedadId INT
+        , FacturaId INT
+        , NumeroFinca VARCHAR(20)
+        , FechaVencimiento DATE
+    );
+
+    DECLARE @DiasGraciaCorta INT;
+    DECLARE @CCReconexionId INT = 6;
+    DECLARE @MontoReconexion DECIMAL(15,2);
+    
+    BEGIN TRY
+
+        SELECT @DiasGraciaCorta = Valor
+        FROM dbo.ParametrosSistema
+        WHERE Nombre = 'DiasGraciaCorta';
+
+
+        SELECT @MontoReconexion = ValorFijo
+        FROM dbo.CC_ReconexionAgua
+        WHERE ConceptoCobroId = @CCReconexionId;
+
+
+        INSERT INTO @PropiedadesACortar (
+            PropiedadId
+            , FacturaId
+            , NumeroFinca
+            , FechaVencimiento
+        )
+        SELECT DISTINCT
+            P.PropiedadId
+            , F.FacturaId
+            , P.NumeroFinca
+            , F.FechaVencimiento
+        FROM dbo.Propiedad P
+        INNER JOIN dbo.Factura F ON F.PropiedadId = P.PropiedadId
+        INNER JOIN dbo.CCPropiedad CP ON CP.PropiedadId = P.PropiedadId
+        WHERE 
+            
+            CP.ConceptoCobroId = 1                                                      -- Tiene CC de agua asignado
+            AND CP.TipoAsociacionId = 1
+            
+            AND F.EstadoFacturaId = 1                                                   
+            AND F.FechaVencimiento < @inFechaOperacion                                  -- Factura está vencida
+            
+            AND DATEADD(DAY, @DiasGraciaCorta, F.FechaVencimiento) <= @inFechaOperacion -- Cumplió días de gracia para corte
+            
+            AND NOT EXISTS (                                                            -- No hay orden de corte activa para esta factura
+                SELECT 1 
+                FROM dbo.OrdenCorte OC 
+                WHERE OC.FacturaId = F.FacturaId 
+                    AND OC.EstadoCorteId = 1
+            );
+
+
+        IF NOT EXISTS (SELECT 1 FROM @PropiedadesACortar)
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+        BEGIN TRANSACTION;
+
+
+        INSERT INTO dbo.OrdenCorte (                                                    -- Se generan las órdenes de corte
+            PropiedadId
+            , FacturaId
+            , FechaOrden
+            , EstadoCorteId
+        )
+        SELECT 
+            PAC.PropiedadId
+            , PAC.FacturaId
+            , @inFechaOperacion
+            , 1     
+        FROM @PropiedadesACortar PAC;
+
+
+        INSERT INTO dbo.DetalleFactura (                                                -- Se insertan CCs de reconexion agua
+            FacturaId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
+        )
+        SELECT 
+            PAC.FacturaId
+            , @CCReconexionId  
+            , @MontoReconexion
+            , 'Reconexión de Agua por corte de servicio'
+        FROM @PropiedadesACortar PAC;
+
+
+        UPDATE F                                                                        -- Actualizar el total final de la factura
+        SET F.TotalAPagarFinal = F.TotalAPagarFinal + @MontoReconexion
+        FROM dbo.Factura F
+        INNER JOIN @PropiedadesACortar PAC ON F.FacturaId = PAC.FacturaId;
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError 
+        (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES 
+        (
+            'SP_GenerarOrdenesCorte'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_GenerarOrdenesCorte'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+
+    END CATCH;
+
+END;

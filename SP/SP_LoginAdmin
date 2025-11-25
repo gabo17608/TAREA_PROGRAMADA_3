@@ -1,0 +1,61 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_LoginAdmin]    Script Date: 25/11/2025 3:44:21 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_LoginAdmin]
+    @inUsername NVARCHAR(100)
+    , @inPassword NVARCHAR(100)
+    , @outResultCode INT OUTPUT
+    , @outResultado BIT OUTPUT                                     -- Resultado del login
+
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+
+        IF EXISTS (                                             -- Validar username y contraseña
+            SELECT 1 
+            FROM dbo.UsuarioAdmin 
+            WHERE Username = @inUsername 
+                AND Contrasena = @inPassword
+        )
+        BEGIN
+            SET @outResultado = 1;                              -- Login exitoso
+        END
+        ELSE
+        BEGIN
+            SET @outResultado = 0;                              -- Login fallido
+        END
+
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_LoginAdmin'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_LoginAdmin'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

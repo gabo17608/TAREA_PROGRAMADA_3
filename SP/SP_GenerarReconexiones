@@ -1,0 +1,113 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_GenerarReconexiones]    Script Date: 25/11/2025 3:44:07 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_GenerarReconexiones]
+    @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @ReconexionesGenerar TABLE (
+        OrdenCorteId INT
+        , PropiedadId INT
+        , FacturaId INT
+        , NumeroFinca VARCHAR(20)
+    );
+    
+    BEGIN TRY
+
+        INSERT INTO @ReconexionesGenerar (
+            OrdenCorteId
+            , PropiedadId
+            , FacturaId
+            , NumeroFinca
+        )
+        SELECT 
+            OC.OrdenCorteId
+            , OC.PropiedadId
+            , OC.FacturaId
+            , P.NumeroFinca
+        FROM dbo.OrdenCorte OC
+        INNER JOIN dbo.Propiedad P ON P.PropiedadId = OC.PropiedadId
+        INNER JOIN dbo.Factura F ON F.FacturaId = OC.FacturaId
+        WHERE 
+            
+            OC.EstadoCorteId = 1                                                        -- Orden de corte está pendiente
+            
+            AND F.EstadoFacturaId = 2                                                   -- La factura que generó el corte está pagada
+            
+            AND NOT EXISTS (                                                            -- No existe ya una orden de reconexión
+                SELECT 1 
+                FROM dbo.OrdenReconexion ORA 
+                WHERE ORA.OrdenCorteId = OC.OrdenCorteId
+            );
+
+
+        IF NOT EXISTS (SELECT 1 FROM @ReconexionesGenerar)
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+        BEGIN TRANSACTION;
+
+
+        INSERT INTO dbo.OrdenReconexion (                                               -- Se generan órdenes de reconexión
+            OrdenCorteId
+            , FacturaId
+            , FechaReconexion
+        )
+        SELECT 
+            RG.OrdenCorteId
+            , RG.FacturaId
+            , @inFechaOperacion
+        FROM @ReconexionesGenerar RG;
+
+
+        UPDATE OC                                                                       -- Se actualiza el estado del corte
+        SET OC.EstadoCorteId = 2
+        FROM dbo.OrdenCorte OC
+        INNER JOIN @ReconexionesGenerar RG ON OC.OrdenCorteId = RG.OrdenCorteId;
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError 
+        (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES 
+        (
+            'SP_GenerarReconexiones'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_GenerarReconexiones'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+
+    END CATCH;
+
+END;

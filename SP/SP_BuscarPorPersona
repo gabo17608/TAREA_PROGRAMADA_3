@@ -1,0 +1,69 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BuscarPorPersona]    Script Date: 25/11/2025 3:42:16 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_BuscarPorPersona]
+    @inValorDocumentoId NVARCHAR(20)
+    , @outResultCode INT OUTPUT
+    , @outResultado BIT OUTPUT                                  -- Resultado de la búsqueda
+
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+
+        IF EXISTS (                                                             -- Validar número de finca
+            SELECT 1 
+            FROM dbo.Persona 
+            WHERE ValorDocumentoId = @inValorDocumentoId
+        )
+        BEGIN
+            SET @outResultado = 1;                                              -- Búsqueda exitosa    
+
+            SELECT                                                              -- Se muestra la lista de propiedades de la persona 
+            PRO.NumeroFinca
+            , PRO.FechaRegistro
+            , PP.FechaInicio AS fechaAsociacion
+        FROM dbo.PropiedadPersona PP
+        INNER JOIN dbo.Persona PER ON PER.PersonaId = PP.PersonaId
+        INNER JOIN dbo.Propiedad PRO ON PRO.PropiedadId = PP.PropiedadId
+        WHERE PER.ValorDocumentoId = @inValorDocumentoId
+            AND PP.TipoAsociacionId = 1
+        END
+        ELSE
+        BEGIN
+            SET @outResultado = 0;                                              -- Búsqueda fallida
+        END
+
+        SET @outResultCode = 0;
+        
+    END TRY
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+        
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_BuscarPorPersona'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_BuscarPorPersona'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;
