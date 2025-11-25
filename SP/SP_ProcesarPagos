@@ -1,0 +1,174 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarPagos]    Script Date: 25/11/2025 3:46:43 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarPagos]
+    @inXmlFecha XML
+    , @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @PagosXML TABLE (
+        NumeroFinca VARCHAR(20)
+        , TipoMedioPagoId INT
+        , NumeroReferencia VARCHAR(50)
+        , PropiedadId INT
+        , FacturaId INT
+        , TotalOriginal DECIMAL(15,2)
+        , TotalFinal DECIMAL(15,2)
+        , FechaVencimiento DATE
+    );
+
+    DECLARE @DiasVencimiento INT;
+    DECLARE @CCMoraId INT = 7;
+    DECLARE @ValorPorcentual DECIMAL(5,4);
+    
+    BEGIN TRY
+
+        IF @inXmlFecha.exist('/FechaOperacion/Pagos/Pago') = 0
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+
+        SELECT @DiasVencimiento = Valor                 -- Se obtiene el parametro de DiasVencimiento
+        FROM dbo.ParametrosSistema
+        WHERE Nombre = 'DiasVencimientoFactura';
+
+
+        SELECT @ValorPorcentual = ValorPorcentual
+        FROM dbo.CC_InteresesMoratorios
+        WHERE ConceptoCobroId = @CCMoraId;
+
+
+        INSERT INTO @PagosXML (
+            NumeroFinca
+            , TipoMedioPagoId
+            , NumeroReferencia
+            , PropiedadId 
+            , FacturaId
+            , TotalOriginal
+            , TotalFinal
+            , FechaVencimiento
+        )
+        SELECT
+            Pago.value('@numeroFinca', 'VARCHAR(20)')
+            , Pago.value('@tipoMedioPagoId', 'INT')
+            , Pago.value('@numeroReferencia', 'VARCHAR(50)')
+            , P.PropiedadId
+            , (SELECT TOP 1 FacturaId 
+               FROM dbo.Factura 
+               WHERE PropiedadId = P.PropiedadId 
+                 AND EstadoFacturaId = 1
+               ORDER BY FechaFactura ASC)
+            , (SELECT TOP 1 TotalAPagarOriginal 
+               FROM dbo.Factura 
+               WHERE PropiedadId = P.PropiedadId 
+                 AND EstadoFacturaId = 1
+               ORDER BY FechaFactura ASC)
+            , (SELECT TOP 1 TotalAPagarFinal 
+               FROM dbo.Factura 
+               WHERE PropiedadId = P.PropiedadId 
+                 AND EstadoFacturaId = 1
+               ORDER BY FechaFactura ASC)
+            , (SELECT TOP 1 FechaVencimiento 
+               FROM dbo.Factura 
+               WHERE PropiedadId = P.PropiedadId 
+                 AND EstadoFacturaId = 1
+               ORDER BY FechaFactura ASC)
+        FROM @inXmlFecha.nodes('/FechaOperacion/Pagos/Pago') AS Pagos(Pago)
+        INNER JOIN dbo.Propiedad P ON P.NumeroFinca = Pago.value('@numeroFinca', 'VARCHAR(20)');
+
+
+        BEGIN TRANSACTION;
+  
+        INSERT INTO dbo.DetalleFactura (                            -- Agregar intereses moratorios si aplica
+            FacturaId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
+        )
+        SELECT
+            PX.FacturaId
+            , @CCMoraId                                             -- CC Intereses Moratorios
+            , PX.TotalOriginal * @ValorPorcentual / 30 * DATEDIFF(DAY, PX.FechaVencimiento, @inFechaOperacion)
+            , 'Intereses moratorios por ' + CAST(DATEDIFF(DAY, PX.FechaVencimiento, @inFechaOperacion) AS VARCHAR) + ' días'
+        FROM @PagosXML PX
+        WHERE PX.FacturaId IS NOT NULL                    
+            AND PX.FechaVencimiento < @inFechaOperacion;
+
+        
+        UPDATE F                                                    -- Se actualiza TotalAPagarFinal con intereses
+        SET F.TotalAPagarFinal = F.TotalAPagarFinal + 
+            (PX.TotalOriginal * @ValorPorcentual / 30 * DATEDIFF(DAY, PX.FechaVencimiento, @inFechaOperacion))
+        FROM dbo.Factura F
+        INNER JOIN @PagosXML PX ON F.FacturaId = PX.FacturaId
+        WHERE PX.FacturaId IS NOT NULL
+            AND PX.FechaVencimiento < @inFechaOperacion;
+
+   
+        INSERT INTO dbo.Pago (                                      -- Registrar pagos
+            FacturaId
+            , TipoMedioPagoId
+            , NumeroReferencia
+            , MontoPagado
+            , FechaPago
+        )
+        SELECT
+            PX.FacturaId
+            , PX.TipoMedioPagoId
+            , PX.NumeroReferencia
+            , CASE WHEN PX.FechaVencimiento < @inFechaOperacion 
+                THEN PX.TotalFinal + (PX.TotalOriginal * @ValorPorcentual / 30 * DATEDIFF(DAY, PX.FechaVencimiento, @inFechaOperacion))
+                ELSE PX.TotalFinal
+              END
+            , @inFechaOperacion
+        FROM @PagosXML PX
+        WHERE PX.FacturaId IS NOT NULL;
+
+        
+        UPDATE F                                                    -- Actualizar estado de facturas
+        SET F.EstadoFacturaId = 2                                   -- Pagado
+        FROM dbo.Factura F
+        INNER JOIN @PagosXML PX ON F.FacturaId = PX.FacturaId
+        WHERE F.FacturaId = PX.FacturaId
+
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SET @outResultCode = 50008;
+        
+         INSERT INTO dbo.DBError 
+        (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES 
+        (
+            'SP_ProcesarPagos'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarPagos'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

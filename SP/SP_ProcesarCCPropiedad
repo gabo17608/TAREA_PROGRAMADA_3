@@ -1,0 +1,113 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarCCPropiedad]    Script Date: 25/11/2025 3:45:43 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarCCPropiedad]
+    @inXmlFecha XML
+    , @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+        DECLARE @MovimientosCC TABLE (
+            PropiedadId INT
+            , ConceptoCobroId INT
+            , TipoAsociacionId INT
+            , NumeroFinca VARCHAR(20)
+            , IdCC INT
+        );
+    
+    BEGIN TRY
+
+        IF @inXmlFecha.exist('/FechaOperacion/CCPropiedad/Movimiento') = 0
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+
+        INSERT INTO @MovimientosCC (
+            PropiedadId
+            , ConceptoCobroId
+            , TipoAsociacionId
+            , NumeroFinca
+            , IdCC
+        )
+        SELECT
+            P.PropiedadId
+            ,Movimiento.value('@idCC', 'INT')
+            ,Movimiento.value('@tipoAsociacionId', 'INT')
+            ,Movimiento.value('@numeroFinca', 'VARCHAR(20)')
+            ,Movimiento.value('@idCC', 'INT')
+        FROM @inXmlFecha.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS Movimientos(Movimiento)
+        INNER JOIN dbo.Propiedad P ON P.NumeroFinca = Movimiento.value('@numeroFinca', 'VARCHAR(20)');
+
+        UPDATE CP                                       -- Actualizar los que ya existen
+        SET CP.TipoAsociacionId = M.TipoAsociacionId
+            , CP.FechaAsociacion = 
+                CASE WHEN M.TipoAsociacionId = 1 
+                    THEN @inFechaOperacion 
+                    ELSE CP.FechaAsociacion 
+                END
+            , CP.FechaDesasociacion = 
+                CASE WHEN M.TipoAsociacionId = 2 
+                    THEN @inFechaOperacion 
+                    ELSE NULL 
+                END
+        FROM dbo.CCPropiedad CP
+        INNER JOIN @MovimientosCC M ON CP.PropiedadId = M.PropiedadId 
+            AND CP.ConceptoCobroId = M.ConceptoCobroId;
+
+
+        INSERT INTO dbo.CCPropiedad (                   -- Insertar si no existen
+            PropiedadId
+            , ConceptoCobroId
+            , TipoAsociacionId
+            , FechaAsociacion
+        )
+        SELECT
+            M.PropiedadId
+            , M.ConceptoCobroId
+            , M.TipoAsociacionId
+            , @inFechaOperacion
+        FROM @MovimientosCC M
+        WHERE M.TipoAsociacionId = 1
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM dbo.CCPropiedad CP 
+                WHERE CP.PropiedadId = M.PropiedadId 
+                    AND CP.ConceptoCobroId = M.ConceptoCobroId
+            );
+
+        SET @outResultCode = 0;
+    END TRY
+
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ProcesarCCPropiedad'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarCCPropiedad'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

@@ -1,0 +1,146 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarOperacionesXML]    Script Date: 25/11/2025 3:46:14 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarOperacionesXML]
+    @inXmlOperaciones XML
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @FechasOperacion TABLE 
+    (
+        Id INT IDENTITY(1,1)
+        , FechaOperacion DATE 
+    );
+
+    DECLARE @FechaActual DATE;
+    DECLARE @TotalFechas INT;
+    DECLARE @Contador INT = 1;
+    DECLARE @XmlFecha XML;
+    DECLARE @ResultCodeHijo INT;
+
+    BEGIN TRY
+
+        INSERT INTO @FechasOperacion            -- Extraer fechas del XML
+        (
+            FechaOperacion
+        )
+        SELECT DISTINCT
+            Operaciones.value('@fecha', 'DATE')
+        FROM @inXmlOperaciones.nodes('/Operaciones/FechaOperacion') AS Fechas(Operaciones)
+
+        SELECT @TotalFechas = COUNT(*) 
+        FROM @FechasOperacion; 
+
+        BEGIN TRANSACTION;                      -- Iniciar transacción
+
+            WHILE @Contador <= @TotalFechas         -- Procesar fecha por fecha
+            BEGIN
+                SELECT @FechaActual = FO.FechaOperacion 
+                FROM @FechasOperacion AS FO
+                WHERE FO.Id = @Contador;
+
+                SELECT @XmlFecha = Operaciones.query('.')       -- Extraer nodos para fecha actual
+                FROM @inXmlOperaciones.nodes('/Operaciones/FechaOperacion') AS Fechas(Operaciones)
+                WHERE Operaciones.value('@fecha', 'DATE') = @FechaActual;
+
+                                                            -- Procesar operaciones
+                EXEC SP_ProcesarPersonas                    -- 1. Procesar Personas
+                    @inXmlFecha = @XmlFecha
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+            
+                EXEC SP_ProcesarPropiedades                 -- 2. Procesar Propiedades
+                    @inXmlFecha = @XmlFecha
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+         
+                EXEC SP_ProcesarPropiedadPersona            -- 3. Procesar PropiedadPersona
+                    @inXmlFecha = @XmlFecha
+                    , @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+            
+                EXEC SP_ProcesarCCPropiedad                 -- 4. Procesar CCPropiedad
+                    @inXmlFecha = @XmlFecha
+                    , @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+
+                EXEC SP_ProcesarPropiedadCambio             -- 5. Procesar PropiedadCambio
+                    @inXmlFecha = @XmlFecha
+                    , @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+
+                EXEC SP_ProcesarLecturasMedidor             -- 6. Procesar LecturasMedidor
+                    @inXmlFecha = @XmlFecha
+                    , @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+               
+                EXEC SP_ProcesarPagos                       -- 7. Procesar Pagos
+                    @inXmlFecha = @XmlFecha
+                    , @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+                                                            -- Procesos Masivos
+                EXEC SP_GenerarFacturas                     -- 1. Generar Facturas
+                    @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+                                              
+                EXEC SP_GenerarOrdenesCorte                 -- 2. Generar Órdenes de Corte
+                    @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+            
+                
+                EXEC SP_GenerarReconexiones                 -- 3. Generar Reconexiones
+                    @inFechaOperacion = @FechaActual
+                    , @outResultCode = @ResultCodeHijo OUTPUT;
+
+
+                SET @Contador = @Contador + 1;
+            END;
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+
+        IF @@TRANCOUNT > 0
+        BEGIN
+            ROLLBACK TRANSACTION;
+        END;
+        
+        SET @outResultCode = 50008;
+        INSERT INTO dbo.DBError 
+        (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES 
+        (
+            'SP_ProcesarOperacionesXML'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarOperacionesXML'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

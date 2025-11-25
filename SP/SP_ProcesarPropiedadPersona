@@ -1,0 +1,114 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarPropiedadPersona]    Script Date: 25/11/2025 3:47:37 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarPropiedadPersona]
+    @inXmlFecha XML
+    , @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @MovimientosPP TABLE (
+        PropiedadId INT
+        , PersonaId INT
+        , TipoAsociacionId INT
+        , NumeroFinca VARCHAR(20)
+        , ValorDocumento VARCHAR(50)
+    );
+    
+    BEGIN TRY
+
+        IF @inXmlFecha.exist('/FechaOperacion/PropiedadPersona/Movimiento') = 0
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+
+        INSERT INTO @MovimientosPP (
+            PropiedadId
+            , PersonaId
+            , TipoAsociacionId
+            , NumeroFinca
+            , ValorDocumento
+        )
+        SELECT
+            PR.PropiedadId
+            , P.PersonaId
+            , Movimiento.value('@tipoAsociacionId', 'INT')
+            , Movimiento.value('@numeroFinca', 'VARCHAR(20)')
+            , Movimiento.value('@valorDocumento', 'VARCHAR(50)')
+        FROM @inXmlFecha.nodes('/FechaOperacion/PropiedadPersona/Movimiento') AS Movimientos(Movimiento)
+        INNER JOIN dbo.Persona P ON P.ValorDocumentoId = Movimiento.value('@valorDocumento', 'VARCHAR(50)')
+        INNER JOIN dbo.Propiedad PR ON PR.NumeroFinca = Movimiento.value('@numeroFinca', 'VARCHAR(20)');
+
+        UPDATE PP                                           -- Actualizar los que ya existen
+        SET PP.TipoAsociacionId = M.TipoAsociacionId
+            , PP.FechaInicio = 
+                CASE WHEN M.TipoAsociacionId = 1 
+                    THEN @inFechaOperacion 
+                    ELSE PP.FechaInicio 
+                END
+            , PP.FechaFin = 
+                CASE WHEN M.TipoAsociacionId = 2 
+                    THEN @inFechaOperacion 
+                    ELSE NULL 
+                END
+        FROM dbo.PropiedadPersona PP
+        INNER JOIN @MovimientosPP M ON PP.PropiedadId = M.PropiedadId 
+            AND PP.PersonaId = M.PersonaId;
+
+
+        INSERT INTO dbo.PropiedadPersona (                  -- Insertar si no existen
+            PropiedadId
+            , PersonaId
+            , TipoAsociacionId
+            , FechaInicio
+        )
+        SELECT
+            M.PropiedadId
+            , M.PersonaId
+            , M.TipoAsociacionId
+            , @inFechaOperacion
+        FROM @MovimientosPP M
+        WHERE M.TipoAsociacionId = 1
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM dbo.PropiedadPersona PP 
+                WHERE PP.PropiedadId = M.PropiedadId 
+                    AND PP.PersonaId = M.PersonaId
+        );
+
+        SET @outResultCode = 0;
+    END TRY
+
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ProcesarPropiedadPersona'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarPropiedadPersona'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

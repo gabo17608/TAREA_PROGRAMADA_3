@@ -1,0 +1,125 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarPagoInterfaz]    Script Date: 25/11/2025 3:46:27 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarPagoInterfaz]
+    @inFacturaId INT
+    , @inTipoMedioPagoId INT
+    , @outNumeroReferencia VARCHAR(50) OUTPUT
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @FechaPago DATE = GETDATE();
+    DECLARE @MontoIntereses DECIMAL(15,2);
+    DECLARE @TotalAPagar DECIMAL(15,2);
+    DECLARE @CCMoraId INT = 7;
+    DECLARE @ValorPorcentual DECIMAL(5,4);
+    DECLARE @FechaVencimiento DATE;
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        SELECT @ValorPorcentual = ValorPorcentual                       -- Obtener porcentaje de intereses
+        FROM dbo.CC_InteresesMoratorios
+        WHERE ConceptoCobroId = @CCMoraId;
+
+
+        SELECT @FechaVencimiento = F.FechaVencimiento                   -- Obtener fecha de vencimiento
+        FROM dbo.Factura F
+        WHERE FacturaId = @inFacturaId
+        
+        
+        SELECT @MontoIntereses =                                        -- Calcular intereses si la factura está vencida
+            CASE 
+                WHEN F.FechaVencimiento < @FechaPago 
+                THEN F.TotalAPagarOriginal * @ValorPorcentual / 30 * DATEDIFF(DAY, F.FechaVencimiento, @FechaPago)
+                ELSE 0 
+            END,
+            @TotalAPagar = F.TotalAPagarFinal
+        FROM dbo.Factura F
+        WHERE F.FacturaId = @inFacturaId;
+        
+        
+        IF @MontoIntereses > 0                                          -- Agregar intereses moratorios si aplica
+        BEGIN
+            INSERT INTO dbo.DetalleFactura (
+                FacturaId
+                , ConceptoCobroId
+                , Monto
+                , Descripcion
+            )
+            VALUES (
+                @inFacturaId
+                , @CCMoraId
+                , @MontoIntereses 
+                , 'Intereses moratorios por ' + CAST(DATEDIFF(DAY,@FechaVencimiento, @FechaPago) AS VARCHAR) + ' días'
+            );
+            
+
+            UPDATE dbo.Factura
+            SET TotalAPagarFinal = TotalAPagarFinal + @MontoIntereses
+            WHERE FacturaId = @inFacturaId;
+            
+            SET @TotalAPagar = @TotalAPagar + @MontoIntereses;
+        END;
+        
+                                                                                                           
+        SET @outNumeroReferencia = 'RCPT-' + FORMAT(GETDATE(), 'yyyyMM') + '-' + CAST(@inFacturaId AS VARCHAR);  -- Generar númeroReferencia
+        
+
+        INSERT INTO dbo.Pago (                                          -- Se registra el pago
+            FacturaId
+            , TipoMedioPagoId
+            , NumeroReferencia
+            , MontoPagado
+            , FechaPago
+        )
+        VALUES (@inFacturaId
+            , @inTipoMedioPagoId
+            , @outNumeroReferencia
+            , @TotalAPagar
+            , @FechaPago
+        );
+        
+        
+        UPDATE dbo.Factura                                              -- Se modifica el estado de la factura a "Pagado"
+        SET EstadoFacturaId = 2
+        WHERE FacturaId = @inFacturaId;
+        
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SET @outResultCode = 50008;
+
+        SET @outNumeroReferencia = NULL;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ProcesarPagoInterfaz'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarPagoInterfaz'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

@@ -1,0 +1,96 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ObtenerInfoPropiedad]    Script Date: 25/11/2025 3:45:30 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ObtenerInfoPropiedad]
+    @inNumeroFinca NVARCHAR(20)
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+
+        SELECT                                                                  -- Obtener información de la propiedad
+            P.PropiedadId
+            , P.NumeroFinca
+            , P.NumeroMedidor
+            , P.MetrosCuadrados
+            , TU.Nombre AS TipoUso
+            , TZ.Nombre AS TipoZona
+            , P.ValorFiscal
+            , P.FechaRegistro
+            , P.SaldoM3
+            , P.SaldoM3UltimaFactura
+        FROM dbo.Propiedad P
+        INNER JOIN dbo.TipoUsoPropiedad TU ON TU.TipoUsoId = P.TipoUsoId
+        INNER JOIN dbo.TipoZonaPropiedad TZ ON TZ.TipoZonaId = P.TipoZonaId
+        WHERE P.NumeroFinca = @inNumeroFinca;
+
+
+        SELECT                                                                  -- Obtener información de la persona activo
+            PER.Nombre
+            , PER.ValorDocumentoId
+            , PER.Email
+            , PER.Telefono1 AS Telefono
+            , PP.FechaInicio AS FechaAsociacion
+        FROM dbo.PropiedadPersona PP
+        INNER JOIN dbo.Persona PER ON PER.PersonaId = PP.PersonaId
+        INNER JOIN dbo.Propiedad P ON P.PropiedadId = PP.PropiedadId
+        WHERE P.NumeroFinca = @inNumeroFinca
+            AND PP.TipoAsociacionId = 1
+
+
+        SELECT                                                                  -- Obtener información de las facturas pendientes 
+            F.FacturaId
+            , F.FechaFactura
+            , F.FechaVencimiento
+            , F.TotalAPagarOriginal
+            , F.TotalAPagarFinal
+            , CASE
+                WHEN F.FechaVencimiento < GETDATE()
+                THEN DATEDIFF(DAY, F.FechaVencimiento, GETDATE())
+                ELSE 0
+            END AS DiasVencidos
+            , CASE                                                              -- Cálculo de intereses 
+                WHEN F.FechaVencimiento < GETDATE() 
+                THEN F.TotalAPagarOriginal * 0.04 / 30 * DATEDIFF(DAY, F.FechaVencimiento, GETDATE())
+                ELSE 0 
+            END AS InteresesCalculados
+        FROM dbo.Factura F
+        INNER JOIN dbo.Propiedad P ON P.PropiedadId = F.PropiedadId
+        WHERE P.NumeroFinca = @inNumeroFinca
+            AND F.EstadoFacturaId = 1                                           -- Con estado de Pendientes 
+        ORDER BY F.FechaFactura ASC;                                            -- En orden ascendente (la más vieja primero)
+  
+        SET @outResultCode = 0;
+        
+    END TRY
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+        
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ObtenerInfoPropiedad'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ObtenerInfoPropiedad'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

@@ -1,0 +1,139 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarLecturasMedidor]    Script Date: 25/11/2025 3:45:58 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarLecturasMedidor]
+    @inXmlFecha XML
+    , @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @Lecturas TABLE (
+        PropiedadId INT
+        , NumeroMedidor VARCHAR(20)
+        , TipoMovimientoId INT
+        , Valor DECIMAL(10,2)
+        , ConsumoM3 DECIMAL(10,2)
+        , SaldoNuevo DECIMAL(10,2)
+    );
+    
+    BEGIN TRY
+
+        IF @inXmlFecha.exist('/FechaOperacion/LecturasMedidor/Lectura') = 0
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+
+        
+        INSERT INTO @Lecturas (                                             -- Extraer lecturas y calcular
+            PropiedadId
+            , NumeroMedidor
+            , TipoMovimientoId
+            , Valor
+            , ConsumoM3
+            , SaldoNuevo
+        )
+        SELECT
+            P.PropiedadId
+            , Lectura.value('@numeroMedidor', 'VARCHAR(20)')
+            , Lectura.value('@tipoMovimientoId', 'INT')
+            , Lectura.value('@valor', 'DECIMAL(10,2)')
+            , CASE                                                          -- ConsumoM3 por tipo de movimiento
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 1          -- TipoMovimiento = 1, se le resta SaldoM3 al valor de lectura
+                THEN Lectura.value('@valor', 'DECIMAL(10,2)') - P.SaldoM3 
+
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 2          -- TipoMovimiento = 2, al ser mayor el SaldoM3 que el valor
+                THEN -Lectura.value('@valor', 'DECIMAL(10,2)')              -- de lectura, se coloca el valor de lectura en negativo 
+
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 3          -- TipoMovimiento = 3, al ser menor el SaldoM3 que el valor
+                THEN Lectura.value('@valor', 'DECIMAL(10,2)')               -- de lectura, se coloca el valor de lectura
+              END
+            , CASE                                                          -- SaldoNuevo por tipo de movimiento
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 1          -- TipoMovimiento = 1, se coloca el valor de lectura
+                THEN Lectura.value('@valor', 'DECIMAL(10,2)')       
+
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 2          -- TipoMovimiento = 2, se resta el valor de lectura al SaldoM3
+                THEN P.SaldoM3 - Lectura.value('@valor', 'DECIMAL(10,2)')
+
+                WHEN Lectura.value('@tipoMovimientoId', 'INT') = 3          -- TipoMovimiento = 3, se suma el valor de lectura al SaldoM3
+                THEN P.SaldoM3 + Lectura.value('@valor', 'DECIMAL(10,2)')
+              END
+        FROM @inXmlFecha.nodes('/FechaOperacion/LecturasMedidor/Lectura') AS Lecturas(Lectura)
+        INNER JOIN dbo.Propiedad P ON P.NumeroMedidor = Lectura.value('@numeroMedidor', 'VARCHAR(20)');
+
+
+        IF EXISTS (
+            SELECT 1 
+            FROM @Lecturas L 
+            WHERE L.TipoMovimientoId = 1 
+                AND L.Valor < (
+                                SELECT SaldoM3 
+                                FROM dbo.Propiedad 
+                                WHERE PropiedadId = L.PropiedadId
+                              )
+        )
+        BEGIN
+            SET @outResultCode = 50009;
+            RETURN;
+        END;
+
+        BEGIN TRANSACTION;
+
+            
+            UPDATE P                                                                -- Actualizar saldos en Propiedad
+            SET P.SaldoM3 = L.SaldoNuevo
+            FROM dbo.Propiedad P
+            INNER JOIN @Lecturas L ON P.PropiedadId = L.PropiedadId;
+
+            
+            INSERT INTO dbo.LecturaMedidor (                                        -- Insertar en LecturaMedidor
+                PropiedadId
+                , TipoMovimientoId
+                , Valor
+                , ConsumoM3
+                , FechaOperacion
+            )
+            SELECT
+                L.PropiedadId
+                , L.TipoMovimientoId
+                , L.Valor
+                , L.ConsumoM3
+                , @inFechaOperacion
+            FROM @Lecturas L;
+
+        COMMIT TRANSACTION;
+        SET @outResultCode = 0;
+
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SET @outResultCode = 50008;
+        
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ProcesarLecturasMedidor'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarLecturasMedidor'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;

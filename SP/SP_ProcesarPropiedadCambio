@@ -1,0 +1,57 @@
+USE [TP3]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarPropiedadCambio]    Script Date: 25/11/2025 3:47:12 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[SP_ProcesarPropiedadCambio]
+    @inXmlFecha XML
+    , @inFechaOperacion DATE
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    BEGIN TRY
+
+        IF @inXmlFecha.exist('/FechaOperacion/PropiedadCambio/Cambio') = 0
+        BEGIN
+            SET @outResultCode = 0;
+            RETURN;
+        END;
+     
+        UPDATE P
+        SET P.ValorFiscal = Cambio.value('@nuevoValor', 'DECIMAL(15,2)')
+        FROM dbo.Propiedad P
+        INNER JOIN @inXmlFecha.nodes('/FechaOperacion/PropiedadCambio/Cambio') AS Cambios(Cambio)
+            ON P.NumeroFinca = Cambio.value('@numeroFinca', 'VARCHAR(20)');
+     
+        SET @outResultCode = 0;
+    END TRY
+
+    BEGIN CATCH
+        SET @outResultCode = 50008;
+
+        INSERT INTO dbo.DBError (
+            UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
+        )
+        VALUES (
+            'SP_ProcesarPropiedadCambio'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , 'SP_ProcesarPropiedadCambio'
+            , ERROR_MESSAGE()
+            , GETDATE()
+        );
+    END CATCH;
+END;
