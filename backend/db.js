@@ -1,24 +1,33 @@
 // backend/db.js
-const sql = require("mssql");
+require('dotenv').config();
+const sql = require('mssql');
 
 const dbConfig = {
-  user: "empleado_user",       // tu usuario de SQL
-  password: "12345Segura",     // tu contraseña
-  database: "TP2",             // nombre de tu base de datos
-  server: "localhost",         // o la IP de tu servidor
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  server: process.env.DB_HOST,
   options: {
     encrypt: false,
-    trustServerCertificate: true,
+    trustServerCertificate: true
   },
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000
+  }
 };
+
+let pool;
 
 async function getConnection() {
   try {
-    const pool = await sql.connect(dbConfig);
-    console.log("Conexión a SQL Server exitosa ✅");
+    if (pool && pool.connected) return pool;
+    pool = await sql.connect(dbConfig);
+    console.log('Conexión a SQL Server establecida ✅');
     return pool;
   } catch (err) {
-    console.error("Error en la conexión a SQL:", err);
+    console.error('Error conectando a SQL Server:', err);
     throw err;
   }
 }
