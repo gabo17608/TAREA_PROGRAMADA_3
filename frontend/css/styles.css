@@ -280,3 +280,47 @@ h3, h4 {
   transform: none;
   box-shadow: none;
 }
+.tabla-propiedades {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    font-size: 14px;
+}
+
+.tabla-propiedades th, .tabla-propiedades td {
+    border: 1px solid #5c4b3b; /* borde café suave */
+    padding: 10px;
+    text-align: left;
+    color: #f5f0e1;
+}
+
+.tabla-propiedades th {
+    background-color: #2e2a26;
+    color: #d4af37;
+}
+
+.tabla-propiedades tr:nth-child(even) {
+    background-color: #26221f;
+}
+
+.tabla-propiedades tr:hover {
+    background-color: #3a352f;
+}
+
+.tabla-propiedades button {
+    padding: 6px 10px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+.notificacion {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #4caf50; /* verde */
+  color: white;
+  padding: 15px 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  font-weight: bold;
+  z-index: 1000;
+}

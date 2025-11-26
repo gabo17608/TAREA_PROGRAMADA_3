@@ -28,19 +28,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 resultadosDiv.innerHTML = `
                     <h4>Propiedades de la persona:</h4>
-                    <ul id="listaPropiedades">
-                        ${propiedades.map(p => 
-                            `<li class="propiedad-item">
-                                Finca: ${p.NumeroFinca} | Fecha registro: ${new Date(p.FechaRegistro).toLocaleDateString()} | Fecha asociación: ${new Date(p.FechaAsociacion).toLocaleDateString()}
-                                <button class="ver-detalle-btn" data-finca="${p.NumeroFinca}">Ver más detalles</button>
-                            </li>`).join('')}
-                    </ul>
+                    <table class="tabla-propiedades">
+                        <thead>
+                            <tr>
+                                <th>Finca</th>
+                                <th>Fecha registro</th>
+                                <th>Fecha asociación</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${propiedades.map((p, index) => 
+                                `<tr>
+                                    <td>${p.NumeroFinca}</td>
+                                    <td>${new Date(p.FechaRegistro).toLocaleDateString()}</td>
+                                    <td>${new Date(p.FechaAsociacion).toLocaleDateString()}</td>
+                                    <td><button class="ver-detalle-btn medio-btn" data-index="${index}">Ver más detalles</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
                 `;
 
-
-                document.querySelectorAll(".ver-detalle-btn").forEach(btn => {
+                // Agregar evento a cada botón
+                document.querySelectorAll(".ver-detalle-btn").forEach((btn) => {
                     btn.addEventListener("click", () => {
-                        const numeroFinca = btn.getAttribute("data-finca");
+                        const index = btn.getAttribute("data-index");
+                        const numeroFinca = propiedades[index].NumeroFinca;
                         window.location.href = `detallePropiedad.html?numeroFinca=${encodeURIComponent(numeroFinca)}`;
                     });
                 });

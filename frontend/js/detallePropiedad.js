@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     ${facturas.length ? facturas.map((f, index) => 
                         `<li>
                             Factura #${f.FacturaId} - ₡${f.TotalAPagarFinal} (Vencida: ${f.DiasVencidos} días)
-                            ${index === 0 ? `<button class="btnPagarFactura" data-facturaid="${f.FacturaId}" data-numfinca="${propiedad.NumeroFinca}">Pagar esta factura</button>` : ""}
+                            ${index === 0 ? `<button id="btnPagarFactura" data-facturaid="${f.FacturaId}" class="medio-btn" style="margin-left:10px;">Pagar esta factura</button>` : ""}
                         </li>`).join('') 
                     : "<li>No hay facturas pendientes</li>"}
                 </ul>
@@ -54,13 +54,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         `;
 
         // Agregar evento al botón de la factura más antigua
-        const btnPagar = document.querySelector(".btnPagarFactura");
+        const btnPagar = document.getElementById("btnPagarFactura");
         if(btnPagar){
             btnPagar.addEventListener("click", () => {
                 const facturaId = btnPagar.dataset.facturaid;
-                const numFinca = btnPagar.dataset.numfinca;
-                // Redirigir a pago.html con FacturaId y numeroFinca
-                window.location.href = `pago.html?facturaId=${facturaId}&numeroFinca=${numFinca}`;
+                window.location.href = `pago.html?facturaId=${facturaId}`;
             });
         }
 

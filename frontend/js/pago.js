@@ -1,9 +1,12 @@
+import { post } from "./api.js";
+
 document.addEventListener('DOMContentLoaded', () => {
   const btnPagar = document.getElementById('btnPagar');
   const mensaje = document.getElementById('mensaje');
-  const volverBtn = document.getElementById('volverBtn');
+  const notificacion = document.getElementById('notificacion');
 
   let tipoMedioPagoId = null;
+
   document.querySelectorAll('.medio-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       tipoMedioPagoId = btn.dataset.id;
@@ -12,15 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Obtener FacturaId y numeroFinca desde URL
   const urlParams = new URLSearchParams(window.location.search);
   const facturaId = urlParams.get('facturaId');
-  const numeroFinca = urlParams.get('numeroFinca');
-
-  // Configurar el botón "Volver" para regresar a detallePropiedad
-  if (numeroFinca) {
-    volverBtn.href = `detallePropiedad.html?numeroFinca=${numeroFinca}`;
-  }
 
   btnPagar.addEventListener('click', async () => {
     if (!facturaId) {
@@ -33,27 +29,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const response = await fetch('http://localhost:3000/pagos/pagar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facturaId, tipoMedioPagoId })
-      });
-
-      const data = await response.json();
+      const data = await post('/pagos/pagar', { facturaId, tipoMedioPagoId });
 
       if (data.success) {
-        mensaje.textContent = `Pago simulado exitoso! Número de referencia: ${data.numeroReferencia}`;
+        // Mostrar notificación
+        notificacion.textContent = `Pago simulado exitoso! Número de referencia: ${data.data.numeroReferencia}`;
+        notificacion.style.display = 'block';
+
         btnPagar.disabled = true;
         document.querySelectorAll('.medio-btn').forEach(b => b.disabled = true);
-        // Redirigir a detallePropiedad con el mismo numeroFinca
+
+        // Ocultar notificación y redirigir al dashboard después de 2 seg
         setTimeout(() => {
-          window.location.href = `detallePropiedad.html?numeroFinca=${numeroFinca}`;
+          notificacion.style.display = 'none';
+          window.location.href = 'dashboard.html';
         }, 2000);
+
       } else {
-        mensaje.textContent = `Error al procesar pago: ${data.message || data.outResultCode}`;
+        mensaje.textContent = `Error al procesar pago: ${data.error || data.data?.outResultCode}`;
       }
+
     } catch (err) {
       mensaje.textContent = `Error de conexión: ${err.message}`;
+      console.error('❌ Pago error:', err);
     }
   });
 });
