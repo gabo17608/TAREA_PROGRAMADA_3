@@ -6,12 +6,13 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <nav>
-        <a href="buscarFinca.html">Buscar Finca</a> |
-        <a href="buscarPersona.html">Buscar Persona</a> |
-        <a href="index.html" id="logout">Logout</a>
-    </nav>
-    <h2>Bienvenido al Dashboard</h2>
+    <div class="dashboard-box">
+        <h2>Bienvenido al Dashboard</h2>
+        <p>Selecciona una opción para continuar:</p>
+        <a href="buscarFinca.html" class="button">Buscar Finca</a>
+        <a href="buscarPersona.html" class="button">Buscar Persona</a>
+        <a href="index.html" class="button" id="logout">Cerrar Sesión</a>
+    </div>
 
     <script>
         document.getElementById("logout").addEventListener("click", () => {
@@ -19,4 +20,5 @@
         });
     </script>
 </body>
+
 </html>

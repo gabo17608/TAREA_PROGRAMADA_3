@@ -4,19 +4,22 @@
     <meta charset="UTF-8">
     <title>Buscar Finca</title>
     <link rel="stylesheet" href="css/styles.css">
-    <style>
-        #spinner { display: none; }
-        .error { color: red; }
-    </style>
 </head>
 <body>
-    <h2>Buscar Finca</h2>
-    <form id="buscarFincaForm">
-        <input type="text" id="numeroFinca" placeholder="Número de Finca" required>
-        <button type="submit">Buscar</button>
-    </form>
-    <div id="spinner">Cargando...</div>
-    <div id="resultados"></div>
+    <div class="page-container">
+        <div class="dashboard-box">
+            <h2>Buscar Finca</h2>
+            <form id="buscarFincaForm">
+                <input type="text" id="numeroFinca" placeholder="Número de Finca" required>
+                <button type="submit">Buscar</button>
+            </form>
+
+            <div id="spinner"></div>
+            <div id="resultados"></div>
+        </div>
+
+        <a href="dashboard.html" class="button volver-btn">Volver al Dashboard</a>
+    </div>
 
     <script type="module" src="js/buscarFinca.js"></script>
 </body>

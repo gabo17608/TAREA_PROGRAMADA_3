@@ -4,20 +4,23 @@
     <meta charset="UTF-8">
     <title>Buscar Persona</title>
     <link rel="stylesheet" href="css/styles.css">
-    <style>
-        #spinnerPersona { display: none; }
-        .error { color: red; }
-    </style>
 </head>
 <body>
-    <h2>Buscar Persona</h2>
-    <form id="buscarPersonaForm">
-        <input type="text" id="documento" placeholder="Número de Documento" required>
-        <button type="submit">Buscar</button>
-    </form>
-    <div id="spinnerPersona">Cargando...</div>
-    <div id="resultadosPersona"></div>
+    <div class="page-container">
+        <div class="dashboard-box">
+            <h2>Buscar Persona</h2>
+            <form id="buscarPersonaForm">
+                <input type="text" id="cedulaPersona" placeholder="Cédula o Identificación" required>
+                <button type="submit">Buscar</button>
+            </form>
 
-    <script type="module" src="js/buscarPersona.js"></script>
+            <div id="spinnerPersona"></div>
+            <div id="resultadosPersona"></div>
+        </div>
+
+        <a href="dashboard.html" class="button volver-btn">Volver al Dashboard</a>
+    </div>
+
+    <script type="module" src="js/buscarpersona.js"></script>
 </body>
 </html>

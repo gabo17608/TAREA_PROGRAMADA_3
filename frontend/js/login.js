@@ -16,7 +16,7 @@ loginForm.addEventListener("submit", async (e) => {
         return;
     }
 
-    const res = await post("/admin/login", { usuario, password });
+    const res = await post("/admin/login", { username: usuario, password });
 
     if (res.success && res.data && res.data.token) {
         localStorage.setItem("token", res.data.token);

@@ -1,4 +1,5 @@
-const API_BASE_URL = "[http://localhost:3000/api](http://localhost:3000/api)"; // Ajustar si cambias puerto o ruta base
+const API_BASE_URL = "http://localhost:3000/api";
+
 
 // Función para obtener headers, incluyendo JWT si existe
 function getHeaders(isJson = true) {

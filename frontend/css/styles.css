@@ -1,0 +1,282 @@
+/* ============================= */
+/*        RESET / BASE           */
+/* ============================= */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  background-color: #1c1b1a; /* negro elegante */
+  color: #f5f0e1; /* crema */
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+}
+
+/* ============================= */
+/*         FORMULARIOS           */
+/* ============================= */
+form {
+  background-color: #2e2a26; /* café oscuro */
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 20px 0;
+}
+
+form input[type="text"],
+form input[type="password"] {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 6px;
+  border: 1px solid #5c4b3b; /* borde café suave */
+  background-color: #1c1b1a;
+  color: #f5f0e1;
+  font-size: 16px;
+}
+
+form input[type="text"]:focus,
+form input[type="password"]:focus {
+  border-color: #d4af37; /* dorado */
+  outline: none;
+}
+
+form button {
+  width: 100%;
+  padding: 12px;
+  background-color: #d4af37;
+  border: none;
+  border-radius: 6px;
+  color: #1c1b1a;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 16px;
+}
+
+form button:hover {
+  background-color: #bfa22d;
+}
+
+/* ============================= */
+/*           SPINNER             */
+/* ============================= */
+#spinner,
+#spinnerPersona,
+#spinnerDetalle {
+  margin: 10px 0;
+  font-weight: bold;
+  color: #d4af37;
+  text-align: center;
+}
+
+/* ============================= */
+/*          RESULTADOS           */
+/* ============================= */
+#error, .error {
+  color: #e74c3c;
+  margin-top: 10px;
+}
+
+#resultados, #resultadosPersona, #detallePropiedad, .info-block {
+  background-color: #2e2a26;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+  color: #f5f0e1;
+  max-width: 800px;
+  width: 100%;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.info-block h3, .info-block h4 {
+  color: #d4af37;
+  margin-bottom: 10px;
+  font-size: 1.2rem;
+}
+
+.info-block p, .info-block ul li {
+  color: #f5f0e1;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.info-block ul {
+  padding-left: 25px;
+}
+
+/* ============================= */
+/*             NAV               */
+/* ============================= */
+nav {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+nav a {
+  text-decoration: none;
+  color: #d4af37;
+  margin: 0 10px;
+  font-weight: bold;
+}
+
+nav a:hover {
+  color: #bfa22d;
+  text-decoration: underline;
+}
+
+/* ============================= */
+/*           TITULOS             */
+/* ============================= */
+h2 {
+  margin-bottom: 20px;
+  color: #d4af37;
+  text-align: center;
+}
+
+h3, h4 {
+  margin-top: 10px;
+  margin-bottom: 8px;
+  color: #f5f0e1;
+}
+
+/* ============================= */
+/*         DASHBOARD BOX         */
+/* ============================= */
+.dashboard-box {
+  background-color: #2e2a26;
+  padding: 40px 30px;
+  border-radius: 12px;
+  box-shadow: 0 5px 25px rgba(0,0,0,0.6);
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+}
+
+.dashboard-box h2 {
+  color: #d4af37;
+  margin-bottom: 15px;
+}
+
+.dashboard-box p {
+  margin-bottom: 25px;
+  color: #f5f0e1;
+  font-size: 16px;
+}
+
+.dashboard-box a.button {
+  display: inline-block;
+  margin: 10px;
+  padding: 12px 25px;
+  background-color: #d4af37;
+  color: #1c1b1a;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: bold;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.dashboard-box a.button:hover {
+  background-color: #bfa22d;
+  transform: translateY(-2px);
+}
+
+/* BOTÓN VOLVER */
+.volver-btn {
+  display: inline-block;
+  padding: 12px 25px;
+  background-color: #d4af37;
+  color: #1c1b1a;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 16px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  margin-top: 15px;
+}
+
+.volver-btn:hover {
+  background-color: #bfa22d;
+  transform: translateY(-2px);
+}
+
+/* ============================= */
+/* DETALLE PROPIEDAD EXCLUSIVO  */
+/* ============================= */
+.detalle-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  width: 100%;
+}
+/* ============================= */
+/* BOTONES DE MÉTODO DE PAGO     */
+/* ============================= */
+.medio-btn {
+  padding: 12px 20px;
+  margin: 5px;
+  border-radius: 6px;
+  border: none;
+  background-color: #2e2a26;
+  color: #f5f0e1;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.medio-btn:hover {
+  background-color: #d4af37;
+  color: #1c1b1a;
+}
+
+.medio-btn.selected {
+  background-color: #d4af37;
+  color: #1c1b1a;
+  transform: translateY(-2px);
+}
+/* ============================= */
+/* BOTÓN DE PAGAR                */
+/* ============================= */
+#btnPagar {
+  padding: 14px 25px;
+  margin-top: 15px;
+  border-radius: 8px;
+  border: none;
+  background-color: #d4af37;
+  color: #1c1b1a;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#btnPagar:hover {
+  background-color: #bfa22d;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+#btnPagar:disabled {
+  background-color: #5c4b3b;
+  color: #ccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

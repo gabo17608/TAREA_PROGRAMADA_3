@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulación de Pago</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="dashboard-box">
+    <h2>Simulación de Pago de Factura</h2>
+
+    <p>Seleccione el método de pago:</p>
+    <div id="medioPagoOpciones">
+      <button type="button" data-id="1" class="medio-btn">Efectivo</button>
+      <button type="button" data-id="2" class="medio-btn">Tarjeta</button>
+    </div>
+
+    <button type="button" id="btnPagar">Pagar</button>
+
+    <p id="mensaje"></p>
+    <a id="volverBtn" href="#" class="volver-btn">← Volver</a>
+  </div>
+
+  <script type="module" src="js/pago.js"></script>
+</body>
+</html>
